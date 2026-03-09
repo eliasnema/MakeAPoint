@@ -57,7 +57,7 @@ struct FloatingPaletteView: View {
                         .foregroundStyle(appController.selectedTool == tool ? .black : .white)
                 }
                 .buttonStyle(.plain)
-                .help(tool.title)
+                .help("\(tool.title) (\(tool.shortcutLabel))")
             }
         }
     }

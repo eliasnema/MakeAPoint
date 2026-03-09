@@ -55,7 +55,7 @@ struct DrawingOverlayView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Make a Point")
                 .font(.headline)
-            Text("\(appController.selectedTool.title) in \(appController.selectedColor.title). Press Esc or \(appController.shortcutDescription) to exit.")
+            Text("\(appController.selectedTool.title) in \(appController.selectedColor.title). 1-5 switch tools, Cmd+Shift+C clears, Esc exits.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }

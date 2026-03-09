@@ -43,6 +43,16 @@ final class AppController {
             case .arrow: "arrow.up.right"
             }
         }
+
+        var shortcutLabel: String {
+            switch self {
+            case .freehand: "1"
+            case .line: "2"
+            case .rectangle: "3"
+            case .ellipse: "4"
+            case .arrow: "5"
+            }
+        }
     }
 
     enum DrawingColor: String, CaseIterable, Identifiable {
@@ -67,6 +77,18 @@ final class AppController {
             case .blue: .blue
             case .pink: .pink
             case .white: .white
+            }
+        }
+
+        var shortcutLabel: String {
+            switch self {
+            case .red: ""
+            case .orange: ""
+            case .yellow: ""
+            case .green: ""
+            case .blue: ""
+            case .pink: ""
+            case .white: ""
             }
         }
     }
@@ -201,11 +223,15 @@ final class AppController {
 
     private func installEscapeMonitor() {
         localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard event.keyCode == 53 else {
+            guard let self else {
                 return event
             }
 
-            self?.toggleDrawingMode()
+            guard event.keyCode == 53 else {
+                return self.handleDrawingShortcut(event) ? nil : event
+            }
+
+            self.toggleDrawingMode()
             return nil
         }
     }
@@ -217,6 +243,36 @@ final class AppController {
 
         NSEvent.removeMonitor(localKeyMonitor)
         self.localKeyMonitor = nil
+    }
+
+    private func handleDrawingShortcut(_ event: NSEvent) -> Bool {
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard let key = event.charactersIgnoringModifiers?.first else {
+            return false
+        }
+
+        if modifiers == [.command, .shift] {
+            if key == "c" || key == "C" {
+                clearDrawings()
+                return true
+            }
+            return false
+        }
+
+        if modifiers.intersection([.command, .control, .option]).isEmpty == false {
+            return false
+        }
+
+        guard modifiers.isEmpty || modifiers == [.capsLock] else {
+            return false
+        }
+
+        guard let index = key.wholeNumberValue, (1...DrawingTool.allCases.count).contains(index) else {
+            return false
+        }
+
+        selectTool(DrawingTool.allCases[index - 1])
+        return true
     }
 }
 
