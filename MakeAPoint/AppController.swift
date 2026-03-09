@@ -15,13 +15,71 @@ import SwiftUI
 final class AppController {
     static let shared = AppController()
 
+    enum DrawingTool: String, CaseIterable, Identifiable {
+        case freehand
+        case line
+        case rectangle
+        case ellipse
+        case arrow
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .freehand: "Freehand"
+            case .line: "Line"
+            case .rectangle: "Rectangle"
+            case .ellipse: "Ellipse"
+            case .arrow: "Arrow"
+            }
+        }
+
+        var systemImage: String {
+            switch self {
+            case .freehand: "scribble"
+            case .line: "line.diagonal"
+            case .rectangle: "rectangle"
+            case .ellipse: "circle"
+            case .arrow: "arrow.up.right"
+            }
+        }
+    }
+
+    enum DrawingColor: String, CaseIterable, Identifiable {
+        case red
+        case orange
+        case yellow
+        case green
+        case blue
+        case pink
+        case white
+
+        var id: String { rawValue }
+
+        var title: String { rawValue.capitalized }
+
+        var color: Color {
+            switch self {
+            case .red: .red
+            case .orange: .orange
+            case .yellow: .yellow
+            case .green: .green
+            case .blue: .blue
+            case .pink: .pink
+            case .white: .white
+            }
+        }
+    }
+
     private(set) var isDrawingEnabled = false
     private(set) var hasDrawings = false
+    private(set) var selectedTool: DrawingTool = .freehand
+    private(set) var selectedColor: DrawingColor = .red
 
     let shortcutDescription = "Shift-Command-D"
 
-    private var completedStrokes: [Stroke] = []
-    private var currentStroke: Stroke?
+    private var completedElements: [DrawingElement] = []
+    private var currentElement: DrawingElement?
     private var overlayController: OverlayWindowController?
     private var hotKeyMonitor: HotKeyMonitor?
     private var localKeyMonitor: Any?
@@ -52,62 +110,91 @@ final class AppController {
     }
 
     func clearDrawings() {
-        completedStrokes.removeAll()
-        currentStroke = nil
+        completedElements.removeAll()
+        currentElement = nil
         hasDrawings = false
     }
 
     func beginStroke(at location: CGPoint, in screenFrame: CGRect) {
-        currentStroke = Stroke(points: [screenFrame.globalPoint(from: location)])
+        let startPoint = screenFrame.globalPoint(from: location)
+        currentElement = DrawingElement(
+            tool: selectedTool,
+            color: selectedColor,
+            points: [startPoint]
+        )
         hasDrawings = true
     }
 
     func updateStroke(at location: CGPoint, in screenFrame: CGRect) {
         let point = screenFrame.globalPoint(from: location)
 
-        if currentStroke == nil {
-            currentStroke = Stroke(points: [point])
+        if currentElement == nil {
+            currentElement = DrawingElement(
+                tool: selectedTool,
+                color: selectedColor,
+                points: [point]
+            )
         } else {
-            currentStroke?.points.append(point)
+            switch currentElement?.tool {
+            case .freehand:
+                currentElement?.points.append(point)
+            case .line, .rectangle, .ellipse, .arrow:
+                if currentElement?.points.count == 1 {
+                    currentElement?.points.append(point)
+                } else {
+                    currentElement?.points[1] = point
+                }
+            case .none:
+                break
+            }
         }
 
         hasDrawings = true
     }
 
     func endStroke() {
-        guard let currentStroke else {
+        guard let currentElement, currentElement.isValid else {
+            self.currentElement = nil
             return
         }
 
-        completedStrokes.append(currentStroke)
-        self.currentStroke = nil
-        hasDrawings = !completedStrokes.isEmpty
+        completedElements.append(currentElement)
+        self.currentElement = nil
+        hasDrawings = !completedElements.isEmpty
     }
 
-    func strokePoints(for screenFrame: CGRect) -> [[CGPoint]] {
-        completedStrokes.compactMap { stroke in
-            stroke.localPoints(for: screenFrame)
+    func selectTool(_ tool: DrawingTool) {
+        selectedTool = tool
+    }
+
+    func selectColor(_ color: DrawingColor) {
+        selectedColor = color
+    }
+
+    func elements(for screenFrame: CGRect) -> [DrawingElement] {
+        completedElements.compactMap { element in
+            element.localElement(for: screenFrame)
         }
     }
 
-    func currentStrokePoints(for screenFrame: CGRect) -> [CGPoint]? {
-        currentStroke?.localPoints(for: screenFrame)
+    func currentElement(for screenFrame: CGRect) -> DrawingElement? {
+        currentElement?.localElement(for: screenFrame)
     }
 
     private func enableDrawingMode() {
         clearKeyMonitor()
+        isDrawingEnabled = true
+        NSApp.activate(ignoringOtherApps: true)
         overlayController = OverlayWindowController(appController: self)
         overlayController?.show()
         installEscapeMonitor()
-        isDrawingEnabled = true
-        NSApp.activate(ignoringOtherApps: true)
     }
 
     private func disableDrawingMode() {
         clearKeyMonitor()
         overlayController?.hide()
         overlayController = nil
-        currentStroke = nil
+        currentElement = nil
         isDrawingEnabled = false
         NSCursor.arrow.set()
     }
@@ -133,10 +220,21 @@ final class AppController {
     }
 }
 
-private struct Stroke {
+struct DrawingElement {
+    let tool: AppController.DrawingTool
+    let color: AppController.DrawingColor
     var points: [CGPoint]
 
-    func localPoints(for screenFrame: CGRect) -> [CGPoint]? {
+    var isValid: Bool {
+        switch tool {
+        case .freehand:
+            !points.isEmpty
+        case .line, .rectangle, .ellipse, .arrow:
+            points.count >= 2
+        }
+    }
+
+    func localElement(for screenFrame: CGRect) -> DrawingElement? {
         let localPoints = points
             .filter { screenFrame.contains($0) }
             .map { screenFrame.localPoint(from: $0) }
@@ -145,7 +243,7 @@ private struct Stroke {
             return nil
         }
 
-        return localPoints
+        return DrawingElement(tool: tool, color: color, points: localPoints)
     }
 }
 
@@ -176,13 +274,18 @@ private final class OverlayWindowController {
     func show() {
         hide()
 
+        let primaryScreenFrame = NSScreen.main?.frame ?? NSScreen.screens.first?.frame
+
         windows = NSScreen.screens.map { screen in
             let window = OverlayWindow(contentRect: screen.frame, screen: screen)
             window.contentView = NSHostingView(
-                rootView: DrawingOverlayView(screenFrame: screen.frame)
+                rootView: DrawingOverlayView(
+                    screenFrame: screen.frame,
+                    showsFloatingPalette: primaryScreenFrame == screen.frame
+                )
                     .environment(appController)
             )
-            window.makeKeyAndOrderFront(nil)
+            window.orderFront(nil)
             return window
         }
 
@@ -203,7 +306,7 @@ private final class OverlayWindow: NSWindow {
         isOpaque = false
         backgroundColor = .clear
         hasShadow = false
-        level = .screenSaver
+        level = .statusBar
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
     }
 
