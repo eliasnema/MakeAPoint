@@ -8,8 +8,10 @@
 import SwiftUI
 
 struct DrawingOverlayView: View {
-    @Environment(AppController.self) private var appController
     @Environment(DrawingStore.self) private var drawingStore
+    @State private var paletteDragTranslation: CGSize = .zero
+
+    private let paletteSize = CGSize(width: 248, height: 128)
 
     let screenFrame: CGRect
     let showsFloatingPalette: Bool
@@ -37,8 +39,11 @@ struct DrawingOverlayView: View {
             .gesture(dragGesture)
 
             if showsFloatingPalette {
-                FloatingPaletteView()
-                    .position(x: initialPaletteOrigin.x, y: initialPaletteOrigin.y)
+                FloatingPaletteView(
+                    onDragChanged: handlePaletteDragChanged,
+                    onDragEnded: handlePaletteDragEnded
+                )
+                    .offset(x: displayedPaletteOrigin.x, y: displayedPaletteOrigin.y)
             }
         }
         .ignoresSafeArea()
@@ -79,10 +84,29 @@ struct DrawingOverlayView: View {
             }
     }
 
-    private var initialPaletteOrigin: CGPoint {
-        CGPoint(
-            x: max(148, screenFrame.width - 170),
-            y: min(max(96, screenFrame.height - 120), screenFrame.height - 96)
+    private var displayedPalettePosition: CGPoint {
+        let storedPosition = drawingStore.palettePosition(in: screenFrame, paletteSize: paletteSize)
+        let translatedPosition = CGPoint(
+            x: storedPosition.x + paletteDragTranslation.width,
+            y: storedPosition.y + paletteDragTranslation.height
         )
+        return drawingStore.clampedPalettePosition(for: translatedPosition, in: screenFrame, paletteSize: paletteSize)
+    }
+
+    private var displayedPaletteOrigin: CGPoint {
+        CGPoint(
+            x: displayedPalettePosition.x - (paletteSize.width / 2),
+            y: displayedPalettePosition.y - (paletteSize.height / 2)
+        )
+    }
+
+    private func handlePaletteDragChanged(_ translation: CGSize) {
+        paletteDragTranslation = translation
+    }
+
+    private func handlePaletteDragEnded(_ translation: CGSize) {
+        paletteDragTranslation = translation
+        drawingStore.updatePalettePosition(displayedPalettePosition, in: screenFrame, paletteSize: paletteSize)
+        paletteDragTranslation = .zero
     }
 }

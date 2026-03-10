@@ -11,6 +11,11 @@ import SwiftUI
 @MainActor
 @Observable
 final class DrawingStore {
+    private enum PaletteDefaultsKey {
+        static let x = "palettePositionX"
+        static let y = "palettePositionY"
+    }
+
     enum DrawingTool: String, CaseIterable, Identifiable {
         case freehand
         case line
@@ -78,14 +83,30 @@ final class DrawingStore {
     }
 
     private let minimumCoalescedPointDistance: CGFloat = 3
+    private let defaults: UserDefaults
 
     private(set) var hasDrawings = false
+    private(set) var palettePosition: CGPoint?
     private(set) var selectedTool: DrawingTool = .freehand
     private(set) var selectedColor: DrawingColor = .red
 
     private var completedElements: [DrawingElement] = []
     private var currentElement: DrawingElement?
     private var renderedCompletedElementsByScreen: [CGRect: [RenderedDrawingElement]] = [:]
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+
+        if
+            defaults.object(forKey: PaletteDefaultsKey.x) != nil,
+            defaults.object(forKey: PaletteDefaultsKey.y) != nil
+        {
+            palettePosition = CGPoint(
+                x: defaults.double(forKey: PaletteDefaultsKey.x),
+                y: defaults.double(forKey: PaletteDefaultsKey.y)
+            )
+        }
+    }
 
     func clear() {
         completedElements.removeAll()
@@ -182,6 +203,39 @@ final class DrawingStore {
 
     func currentRenderedElement(for screenFrame: CGRect) -> RenderedDrawingElement? {
         currentElement?.renderedElement(for: screenFrame)
+    }
+
+    func palettePosition(in screenFrame: CGRect, paletteSize: CGSize) -> CGPoint {
+        let fallbackPosition = CGPoint(
+            x: max(paletteSize.width / 2 + 24, screenFrame.width - paletteSize.width / 2 - 24),
+            y: min(
+                max(paletteSize.height / 2 + 24, screenFrame.height - paletteSize.height / 2 - 28),
+                screenFrame.height - paletteSize.height / 2 - 24
+            )
+        )
+
+        return clampedPalettePosition(palettePosition ?? fallbackPosition, in: screenFrame, paletteSize: paletteSize)
+    }
+
+    func clampedPalettePosition(for position: CGPoint, in screenFrame: CGRect, paletteSize: CGSize) -> CGPoint {
+        clampedPalettePosition(position, in: screenFrame, paletteSize: paletteSize)
+    }
+
+    func updatePalettePosition(_ position: CGPoint, in screenFrame: CGRect, paletteSize: CGSize) {
+        let clampedPosition = clampedPalettePosition(position, in: screenFrame, paletteSize: paletteSize)
+        palettePosition = clampedPosition
+        defaults.set(clampedPosition.x, forKey: PaletteDefaultsKey.x)
+        defaults.set(clampedPosition.y, forKey: PaletteDefaultsKey.y)
+    }
+
+    private func clampedPalettePosition(_ position: CGPoint, in screenFrame: CGRect, paletteSize: CGSize) -> CGPoint {
+        let halfWidth = paletteSize.width / 2
+        let halfHeight = paletteSize.height / 2
+
+        return CGPoint(
+            x: min(max(position.x, halfWidth + 16), screenFrame.width - halfWidth - 16),
+            y: min(max(position.y, halfHeight + 16), screenFrame.height - halfHeight - 16)
+        )
     }
 }
 
