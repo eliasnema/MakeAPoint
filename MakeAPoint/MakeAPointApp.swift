@@ -19,6 +19,7 @@ struct MakeAPointApp: App {
         ) {
             ContentView()
                 .environment(appController)
+                .environment(appController.drawingStore)
         }
         .menuBarExtraStyle(.window)
     }

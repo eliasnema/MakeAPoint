@@ -9,13 +9,14 @@ import SwiftUI
 
 struct DrawingOverlayView: View {
     @Environment(AppController.self) private var appController
+    @Environment(DrawingStore.self) private var drawingStore
 
     let screenFrame: CGRect
     let showsFloatingPalette: Bool
 
     var body: some View {
-        let completedElements = appController.renderedElements(for: screenFrame)
-        let currentElement = appController.currentRenderedElement(for: screenFrame)
+        let completedElements = drawingStore.renderedElements(for: screenFrame)
+        let currentElement = drawingStore.currentRenderedElement(for: screenFrame)
 
         ZStack(alignment: .topLeading) {
             ZStack(alignment: .topLeading) {
@@ -55,7 +56,7 @@ struct DrawingOverlayView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Make a Point")
                 .font(.headline)
-            Text("\(appController.selectedTool.title) in \(appController.selectedColor.title). 1-5 switch tools, Cmd+Shift+C clears, Esc exits.")
+            Text("\(drawingStore.selectedTool.title) in \(drawingStore.selectedColor.title). 1-5 switch tools, Cmd+Shift+C clears, Esc exits.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -68,13 +69,13 @@ struct DrawingOverlayView: View {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
                 if value.translation == .zero {
-                    appController.beginStroke(at: value.location, in: screenFrame)
+                    drawingStore.beginStroke(at: value.location, in: screenFrame)
                 } else {
-                    appController.updateStroke(at: value.location, in: screenFrame)
+                    drawingStore.updateStroke(at: value.location, in: screenFrame)
                 }
             }
             .onEnded { _ in
-                appController.endStroke()
+                drawingStore.endStroke()
             }
     }
 

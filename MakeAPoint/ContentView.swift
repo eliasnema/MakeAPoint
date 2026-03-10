@@ -10,6 +10,7 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(AppController.self) private var appController
+    @Environment(DrawingStore.self) private var drawingStore
 
     private let colorColumns = Array(repeating: GridItem(.fixed(24), spacing: 8), count: 4)
 
@@ -32,16 +33,16 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
 
                 Menu {
-                    ForEach(AppController.DrawingTool.allCases) { tool in
+                    ForEach(DrawingStore.DrawingTool.allCases) { tool in
                         Button {
-                            appController.selectTool(tool)
+                            drawingStore.selectTool(tool)
                         } label: {
                             Label(tool.title, systemImage: tool.systemImage)
                         }
                     }
                 } label: {
                     HStack {
-                        Label(appController.selectedTool.title, systemImage: appController.selectedTool.systemImage)
+                        Label(drawingStore.selectedTool.title, systemImage: drawingStore.selectedTool.systemImage)
                         Spacer()
                         Image(systemName: "chevron.up.chevron.down")
                             .font(.caption)
@@ -60,9 +61,9 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
 
                 LazyVGrid(columns: colorColumns, alignment: .leading, spacing: 8) {
-                    ForEach(AppController.DrawingColor.allCases) { color in
+                    ForEach(DrawingStore.DrawingColor.allCases) { color in
                         Button {
-                            appController.selectColor(color)
+                            drawingStore.selectColor(color)
                         } label: {
                             Circle()
                                 .fill(color.color)
@@ -72,7 +73,7 @@ struct ContentView: View {
                                         .strokeBorder(.white.opacity(color == .white ? 0.4 : 0.8), lineWidth: 1)
                                 }
                                 .overlay {
-                                    if color == appController.selectedColor {
+                                    if color == drawingStore.selectedColor {
                                         Image(systemName: "checkmark")
                                             .font(.system(size: 10, weight: .bold))
                                             .foregroundStyle(color == .yellow || color == .white ? .black : .white)
@@ -93,7 +94,7 @@ struct ContentView: View {
             Button("Clear Current Markup") {
                 appController.clearDrawings()
             }
-            .disabled(!appController.hasDrawings)
+            .disabled(!drawingStore.hasDrawings)
 
             Divider()
 
@@ -109,4 +110,5 @@ struct ContentView: View {
 #Preview {
     ContentView()
         .environment(AppController.shared)
+        .environment(AppController.shared.drawingStore)
 }
