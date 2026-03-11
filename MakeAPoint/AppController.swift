@@ -7,15 +7,22 @@
 
 import AppKit
 import Carbon
+import Foundation
 import Observation
 import SwiftUI
+import UniformTypeIdentifiers
 
 @MainActor
 @Observable
 final class AppController {
+    private enum DefaultsKey {
+        static let exportFolderBookmark = "exportFolderBookmark"
+    }
+
     static let shared = AppController()
 
     private(set) var isDrawingEnabled = false
+    private(set) var exportFolderURL: URL?
     let shortcutDescription = "Shift-Command-D"
     let drawingStore = DrawingStore()
 
@@ -27,6 +34,7 @@ final class AppController {
 
     func configure() {
         NSApp.setActivationPolicy(.accessory)
+        loadExportFolder()
 
         guard hotKeyMonitor == nil else {
             return
@@ -52,6 +60,79 @@ final class AppController {
         drawingStore.clear()
     }
 
+    func chooseExportFolder() {
+        let openPanel = NSOpenPanel()
+        openPanel.title = "Choose Export Folder"
+        openPanel.message = "Exported pictures will be saved here."
+        openPanel.canChooseDirectories = true
+        openPanel.canChooseFiles = false
+        openPanel.canCreateDirectories = true
+        openPanel.allowsMultipleSelection = false
+
+        withRegularActivationPolicy {
+            guard openPanel.runModal() == .OK, let folderURL = openPanel.url else {
+                return
+            }
+
+            do {
+                let bookmarkData = try folderURL.bookmarkData(
+                    options: [.withSecurityScope],
+                    includingResourceValuesForKeys: nil,
+                    relativeTo: nil
+                )
+                UserDefaults.standard.set(bookmarkData, forKey: DefaultsKey.exportFolderBookmark)
+                exportFolderURL = folderURL
+            } catch {
+                NSAlert(error: error).runModal()
+            }
+        }
+    }
+
+    func clearExportFolder() {
+        UserDefaults.standard.removeObject(forKey: DefaultsKey.exportFolderBookmark)
+        exportFolderURL = nil
+    }
+
+    func exportPicture() {
+        guard let pngData = drawingStore.exportPNGData() else {
+            NSSound.beep()
+            return
+        }
+
+        guard let exportFolderURL else {
+            showExportFolderMissingAlert()
+            return
+        }
+
+        do {
+            let scopedFolderURL = try resolvedExportFolderURL()
+            let didAccessSecurityScope = scopedFolderURL.startAccessingSecurityScopedResource()
+            defer {
+                if didAccessSecurityScope {
+                    scopedFolderURL.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            let destinationURL = uniqueExportURL(in: scopedFolderURL)
+            try pngData.write(to: destinationURL, options: .atomic)
+        } catch {
+            if exportFolderURL.isFileURL == false {
+                loadExportFolder()
+            }
+            withRegularActivationPolicy {
+                NSAlert(error: error).runModal()
+            }
+        }
+    }
+
+    var exportFolderDescription: String {
+        exportFolderURL?.path(percentEncoded: false) ?? "Not set"
+    }
+
+    var hasExportFolder: Bool {
+        exportFolderURL != nil
+    }
+
     private func enableDrawingMode() {
         clearKeyMonitor()
         isDrawingEnabled = true
@@ -65,7 +146,7 @@ final class AppController {
         clearKeyMonitor()
         overlayController?.hide()
         overlayController = nil
-        drawingStore.cancelCurrentStroke()
+        drawingStore.clear()
         isDrawingEnabled = false
         NSCursor.arrow.set()
     }
@@ -105,6 +186,10 @@ final class AppController {
                 clearDrawings()
                 return true
             }
+            if key == "e" || key == "E" {
+                exportPicture()
+                return true
+            }
             return false
         }
 
@@ -122,6 +207,107 @@ final class AppController {
 
         drawingStore.selectTool(DrawingStore.DrawingTool.allCases[index - 1])
         return true
+    }
+
+    private func loadExportFolder() {
+        guard
+            let bookmarkData = UserDefaults.standard.data(forKey: DefaultsKey.exportFolderBookmark)
+        else {
+            exportFolderURL = nil
+            return
+        }
+
+        do {
+            var isStale = false
+            let folderURL = try URL(
+                resolvingBookmarkData: bookmarkData,
+                options: [.withSecurityScope],
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            )
+
+            if isStale {
+                let refreshedBookmarkData = try folderURL.bookmarkData(
+                    options: [.withSecurityScope],
+                    includingResourceValuesForKeys: nil,
+                    relativeTo: nil
+                )
+                UserDefaults.standard.set(refreshedBookmarkData, forKey: DefaultsKey.exportFolderBookmark)
+            }
+
+            exportFolderURL = folderURL
+        } catch {
+            UserDefaults.standard.removeObject(forKey: DefaultsKey.exportFolderBookmark)
+            exportFolderURL = nil
+        }
+    }
+
+    private func resolvedExportFolderURL() throws -> URL {
+        guard
+            let bookmarkData = UserDefaults.standard.data(forKey: DefaultsKey.exportFolderBookmark)
+        else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+
+        var isStale = false
+        let folderURL = try URL(
+            resolvingBookmarkData: bookmarkData,
+            options: [.withSecurityScope],
+            relativeTo: nil,
+            bookmarkDataIsStale: &isStale
+        )
+
+        if isStale {
+            let refreshedBookmarkData = try folderURL.bookmarkData(
+                options: [.withSecurityScope],
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil
+            )
+            UserDefaults.standard.set(refreshedBookmarkData, forKey: DefaultsKey.exportFolderBookmark)
+            exportFolderURL = folderURL
+        }
+
+        return folderURL
+    }
+
+    private func uniqueExportURL(in folderURL: URL) -> URL {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+
+        let baseName = "MakeAPoint \(formatter.string(from: .now))"
+        var candidateURL = folderURL.appending(path: "\(baseName).png", directoryHint: .notDirectory)
+        var suffix = 2
+
+        while FileManager.default.fileExists(atPath: candidateURL.path(percentEncoded: false)) {
+            candidateURL = folderURL.appending(path: "\(baseName) \(suffix).png", directoryHint: .notDirectory)
+            suffix += 1
+        }
+
+        return candidateURL
+    }
+
+    private func showExportFolderMissingAlert() {
+        withRegularActivationPolicy {
+            let alert = NSAlert()
+            alert.messageText = "Choose an export folder first."
+            alert.informativeText = "Open Make a Point from the menu bar and set an export folder in the Export section."
+            alert.runModal()
+        }
+    }
+
+    private func withRegularActivationPolicy(_ action: () -> Void) {
+        let previousActivationPolicy = NSApp.activationPolicy()
+        if previousActivationPolicy != .regular {
+            NSApp.setActivationPolicy(.regular)
+        }
+
+        NSApp.activate(ignoringOtherApps: true)
+        action()
+
+        if NSApp.activationPolicy() != previousActivationPolicy {
+            NSApp.setActivationPolicy(previousActivationPolicy)
+        }
     }
 }
 

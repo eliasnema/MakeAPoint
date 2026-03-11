@@ -12,98 +12,160 @@ struct ContentView: View {
     @Environment(AppController.self) private var appController
     @Environment(DrawingStore.self) private var drawingStore
 
-    private let colorColumns = Array(repeating: GridItem(.fixed(24), spacing: 8), count: 4)
+    private let colorColumns = Array(repeating: GridItem(.fixed(24), spacing: 8), count: 3)
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Label(
-                appController.isDrawingEnabled ? "Drawing mode is active" : "Ready to draw on screen",
-                systemImage: appController.isDrawingEnabled ? "pencil.tip.crop.circle.badge.plus" : "cursorarrow"
-            )
-            .font(.headline)
+        VStack(alignment: .leading, spacing: 12) {
+            header
 
-            Text("Use \(appController.shortcutDescription) to toggle a full-screen annotation layer while you present.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Tool")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Menu {
-                    ForEach(DrawingStore.DrawingTool.allCases) { tool in
-                        Button {
-                            drawingStore.selectTool(tool)
-                        } label: {
-                            Label(tool.title, systemImage: tool.systemImage)
-                        }
-                    }
-                } label: {
-                    HStack {
-                        Label(drawingStore.selectedTool.title, systemImage: drawingStore.selectedTool.systemImage)
-                        Spacer()
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                }
-                .buttonStyle(.plain)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Color")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                LazyVGrid(columns: colorColumns, alignment: .leading, spacing: 8) {
-                    ForEach(DrawingStore.DrawingColor.allCases) { color in
-                        Button {
-                            drawingStore.selectColor(color)
-                        } label: {
-                            Circle()
-                                .fill(color.color)
-                                .frame(width: 24, height: 24)
-                                .overlay {
-                                    Circle()
-                                        .strokeBorder(.white.opacity(color == .white ? 0.4 : 0.8), lineWidth: 1)
-                                }
-                                .overlay {
-                                    if color == drawingStore.selectedColor {
-                                        Image(systemName: "checkmark")
-                                            .font(.system(size: 10, weight: .bold))
-                                            .foregroundStyle(color == .yellow || color == .white ? .black : .white)
-                                    }
-                                }
-                        }
-                        .buttonStyle(.plain)
-                        .help(color.title)
-                    }
-                }
-            }
-
-            Button(appController.isDrawingEnabled ? "Stop Drawing" : "Start Drawing") {
+            Button(appController.isDrawingEnabled ? "Stop Session" : "Start Session") {
                 appController.toggleDrawingMode()
             }
             .keyboardShortcut("d", modifiers: [.command, .shift])
+            .controlSize(.large)
+            .frame(maxWidth: .infinity)
 
-            Button("Clear Current Markup") {
-                appController.clearDrawings()
+            HStack(alignment: .top, spacing: 10) {
+                toolMenu
+                colorPicker
             }
-            .disabled(!drawingStore.hasDrawings)
 
-            Divider()
+            HStack(spacing: 8) {
+                actionButton("Export", systemImage: "square.and.arrow.down") {
+                    appController.exportPicture()
+                }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
+                .disabled(!drawingStore.hasDrawings || !appController.hasExportFolder)
 
-            Button("Quit Make a Point") {
+                actionButton("Clear", systemImage: "trash") {
+                    appController.clearDrawings()
+                }
+                .disabled(!drawingStore.hasDrawings)
+            }
+
+            exportFooter
+
+            Button("Quit") {
                 NSApp.terminate(nil)
             }
+            .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .padding(16)
-        .frame(width: 280)
+        .padding(14)
+        .frame(width: 236)
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Make a Point")
+                    .font(.headline)
+                Spacer()
+                Text(appController.shortcutDescription)
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+
+            Text(appController.isDrawingEnabled ? "Live on screen" : "Ready")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var toolMenu: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Tool")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Menu {
+                ForEach(DrawingStore.DrawingTool.allCases) { tool in
+                    Button {
+                        drawingStore.selectTool(tool)
+                    } label: {
+                        Label(tool.title, systemImage: tool.systemImage)
+                    }
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: drawingStore.selectedTool.systemImage)
+                    Text(drawingStore.selectedTool.shortcutLabel)
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var colorPicker: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Color")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            LazyVGrid(columns: colorColumns, alignment: .leading, spacing: 8) {
+                ForEach(DrawingStore.DrawingColor.allCases) { color in
+                    Button {
+                        drawingStore.selectColor(color)
+                    } label: {
+                        Circle()
+                            .fill(color.color)
+                            .frame(width: 24, height: 24)
+                            .overlay {
+                                Circle()
+                                    .strokeBorder(.white.opacity(0.8), lineWidth: 1)
+                            }
+                            .overlay {
+                                if color == drawingStore.selectedColor {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(color.color.accessibleSelectionForeground)
+                                }
+                            }
+                    }
+                    .buttonStyle(.plain)
+                    .help(color.title)
+                }
+            }
+        }
+    }
+
+    private var exportFooter: some View {
+        HStack(spacing: 8) {
+            Button(appController.hasExportFolder ? "Folder" : "Set Folder") {
+                appController.chooseExportFolder()
+            }
+
+            if appController.hasExportFolder {
+                Button {
+                    appController.clearExportFolder()
+                } label: {
+                    Image(systemName: "xmark")
+                }
+                .help("Clear export folder")
+            }
+
+            Spacer()
+
+            Text(appController.hasExportFolder ? "Saved" : "No folder")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func actionButton(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .frame(maxWidth: .infinity)
+        }
     }
 }
 
